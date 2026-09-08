@@ -3,7 +3,7 @@ from fastmcp import FastMCP
 
 mcp = FastMCP("gymmaster")
 SITE = "caveathletics"
-KEY = os.environ
+KEY = os.environ["GYMMASTER_KEY"]
 BASE = f"https://{SITE}.gymmasteronline.com/gatekeeper_api/v2"
 
 @mcp.tool()
