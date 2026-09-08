@@ -3,7 +3,8 @@ from fastmcp import FastMCP
 
 mcp = FastMCP("gymmaster")
 SITE = "caveathletics"
-KEY = os.environ BASE = f"https://{SITE}.gymmasteronline.com/gatekeeper_api/v2"
+KEY = os.environ
+BASE = f"https://{SITE}.gymmasteronline.com/gatekeeper_api/v2"
 
 @mcp.tool()
 def get_debtors() -> str:
