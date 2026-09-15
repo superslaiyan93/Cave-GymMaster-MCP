@@ -26,7 +26,7 @@ def load_gatekeeper_members():
         url = BASE + "/members"
         if last_id is not None:
             url = url + "?last_id=" + str(last_id)
-        r = requests.get(url, auth=(SITE, KEY), timeout=30)
+        r = requests.get(url, auth=(SITE, KEY), timeout=60)
         r.raise_for_status()
         data = r.json()
         batch = data.get("members") or []
@@ -43,47 +43,64 @@ def load_gatekeeper_members():
 
 def load_portal_phones():
     phones = {}
+    status = "portal key not set"
     if not PORTAL_KEY:
-        return phones
+        return phones, status
     try:
-        r = requests.get(PORTAL, params={"api_key": PORTAL_KEY}, timeout=30)
-        r.raise_for_status()
+        r = requests.get(PORTAL, params={"api_key": PORTAL_KEY}, timeout=90)
+        raw = r.text[:200].replace("\n", " ")
+        if r.status_code != 200:
+            return phones, "HTTP " + str(r.status_code) + " " + raw
         data = r.json()
+        err = data.get("error")
+        if err:
+            return phones, "portal error: " + str(err)
         rows = data.get("result")
         if rows is None:
             rows = data if isinstance(data, list) else []
+        if not isinstance(rows, list):
+            return phones, "unexpected json keys: " + ",".join(list(data.keys())[:8])
+        with_phone = 0
         for row in rows:
             mid = row.get("id")
             if mid is None:
                 continue
-            cell = (row.get("phonecell") or "").strip()
-            home = (row.get("phonehome") or "").strip()
-            phones[int(mid)] = cell or home or "no phone"
-    except Exception:
-        return phones
-    return phones
+            cell = str(row.get("phonecell") or "").strip()
+            home = str(row.get("phonehome") or "").strip()
+            phone = cell or home
+            if phone:
+                phones[int(mid)] = phone
+                with_phone += 1
+            else:
+                phones[int(mid)] = "no phone"
+        status = "ok rows=" + str(len(rows)) + " with_phone=" + str(with_phone)
+    except Exception as e:
+        status = "exception: " + type(e).__name__ + " " + str(e)[:120]
+    return phones, status
 
 
 @mcp.tool()
 def get_debtors() -> str:
     members = load_gatekeeper_members()
-    phones = load_portal_phones()
-    lines = []
+    phones, portal_status = load_portal_phones()
+    lines = ["portal: " + portal_status]
+    lines.append("name | ID | owing | phone")
+    count = 0
     for m in members:
         amount = owe_amount(m)
         if amount <= 0:
             continue
         mid = m.get("memberid") or m.get("id") or "?"
         name = m.get("name") or "Unknown"
-        phone = phones.get(int(mid) if str(mid).isdigit() else -1, "no phone")
-        if not PORTAL_KEY:
-            phone = "portal key not set"
-        line = name + " | ID " + str(mid) + " | $" + str(amount) + " | " + phone
-        lines.append(line)
-    if not lines:
-        return "No one owing."
-    header = "name | ID | owing | phone"
-    return header + "\n" + "\n".join(lines)
+        if str(mid).isdigit() and int(mid) in phones:
+            phone = phones[int(mid)]
+        else:
+            phone = "no phone"
+        lines.append(name + " | ID " + str(mid) + " | $" + str(amount) + " | " + phone)
+        count += 1
+    if count == 0:
+        return "portal: " + portal_status + "\nNo one owing."
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":
